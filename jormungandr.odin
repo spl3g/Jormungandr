@@ -6,6 +6,12 @@ import "core:fmt"
 import "core:os"
 import "core:math/rand"
 
+BG :: rl.Color {47, 56, 62, 255}
+FIELD :: rl.Color {74, 85, 91, 255}
+SNAKE_TAIL :: rl.Color {127, 187, 179, 255}
+SNAKE_HEAD :: rl.Color {160, 205, 199, 255}
+FRUIT :: rl.Color {230, 126, 128, 255}
+
 Direction :: enum {
     Up,
     Down,
@@ -88,14 +94,14 @@ MovePlayer :: proc(direction: Direction, snake: ^[dynamic][2]int, table: ^[dynam
 }
 
 Lose :: proc(w, h: i32) {
-    rl.ClearBackground(rl.RAYWHITE)
+    rl.ClearBackground(BG)
     text: cstring = "YOU LOST"
-    position := w / 2 - i32(rl.MeasureText(text, 20)) / 2
-    rl.DrawText(text, position, h / 2 - 20, 20, rl.GRAY)
+    position := w / 2 - i32(rl.MeasureText(text, 30)) / 2
+    rl.DrawText(text, position, h / 2 - 30, 30, FRUIT)
     
     text = "please restart the game"
-    position = w / 2 - i32(rl.MeasureText(text, 15)) / 2
-    rl.DrawText(text, position, h / 2 + 15, 15, rl.GRAY)
+    position = w / 2 - i32(rl.MeasureText(text, 20)) / 2
+    rl.DrawText(text, position, h / 2 + 20, 20, FRUIT)
 }
 
 DrawField :: proc(w, h, rwidth, amount: i32, table: [dynamic][dynamic]Field, snake: [dynamic][2]int) {
@@ -117,14 +123,14 @@ DrawField :: proc(w, h, rwidth, amount: i32, table: [dynamic][dynamic]Field, sna
 		color: rl.Color;
 		switch table[i][j] {
 		case .Head:
-		    color = rl.GREEN
+		    color = SNAKE_TAIL
 		case .Fruit:
-		    color = rl.RED
+		    color = FRUIT
 		case .None:
-		    color = rl.GRAY
+		    color = FIELD
 		}
 		if int(j) == snake[0][0] && int(i) == snake[0][1] {
-		    color = rl.BLUE
+		    color = SNAKE_HEAD
 		}
 		rl.DrawRectangle(jx, iy, rwidth, rwidth, color)
 	    }
@@ -153,7 +159,7 @@ main :: proc() {
     res: Result = nil
     for !rl.WindowShouldClose() {
         rl.BeginDrawing()
-        rl.ClearBackground(rl.RAYWHITE)
+        rl.ClearBackground(BG)
 	
 	if res == Result.GameOver {
 	    Lose(rl.GetScreenWidth(), rl.GetScreenHeight())
