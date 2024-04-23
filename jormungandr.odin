@@ -76,32 +76,48 @@ MovePlayer :: proc(direction: Direction, snake: ^[dynamic][2]int, table: ^[dynam
 	case .Fruit:
 	inject_at(snake, 0, [2]int{x, y})
 	next^ = Field.Head
-	rx: i32;
-	ry: i32;
-	for {
-	    rx = rand.int31_max(11)
-	    ry = rand.int31_max(11)
-	    if table[rx][ry] == Field.Head {
-		rx = rand.int31_max(11)
-		ry = rand.int31_max(11)
-		continue
-	    }
-	    table[rx][ry] = Field.Fruit
-	    break
-	}
+	PlaceFruit(table, snake)
     }
     return Result.None
 }
 
-Lose :: proc(w, h: i32) {
+Lose :: proc(w, h, wh: i32 res: ^Result, field: ^[dynamic][dynamic]Field, snake: ^[dynamic][2]int) {
     rl.ClearBackground(BG)
     text: cstring = "YOU LOST"
     position := w / 2 - i32(rl.MeasureText(text, 30)) / 2
     rl.DrawText(text, position, h / 2 - 30, 30, FRUIT)
     
-    text = "please restart the game"
+    text = "press space to restart the game"
     position = w / 2 - i32(rl.MeasureText(text, 20)) / 2
     rl.DrawText(text, position, h / 2 + 20, 20, FRUIT)
+
+    if rl.IsKeyPressed(rl.KeyboardKey.SPACE) {
+	res^ = nil
+	field^ = make([dynamic][dynamic]Field, wh)
+	for &arr in field {
+	    arr = make([dynamic]Field, wh)
+	}
+	field[wh/2][wh/2] = Field.Head
+	snake^ = make([dynamic][2]int, 0, wh * wh)
+	append(snake, [2]int{int(wh/2), int(wh/2)})
+	PlaceFruit(field, snake)
+    }
+}
+
+PlaceFruit :: proc(field: ^[dynamic][dynamic]Field, snake: ^[dynamic][2]int) {
+    rx: i32
+    ry: i32
+    for {
+	rx = rand.int31_max(11)
+	ry = rand.int31_max(11)
+	if field[rx][ry] == Field.Head {
+	    rx = rand.int31_max(11)
+	    ry = rand.int31_max(11)
+	    continue
+	}
+	field[rx][ry] = Field.Fruit
+	break
+    }
 }
 
 DrawField :: proc(w, h, rwidth, amount: i32, table: [dynamic][dynamic]Field, snake: [dynamic][2]int) {
@@ -149,9 +165,9 @@ main :: proc() {
 	arr = make([dynamic]Field, wh)
     }
     field[wh/2][wh/2] = Field.Head
-    field[0][5] = Field.Fruit
     snake := make([dynamic][2]int, 0, wh * wh)
     append(&snake, [2]int{int(wh/2), int(wh/2)})
+    PlaceFruit(&field, &snake)
     
     direction := Direction.Right
     last_direction: Direction;
@@ -162,7 +178,7 @@ main :: proc() {
         rl.ClearBackground(BG)
 	
 	if res == Result.GameOver {
-	    Lose(rl.GetScreenWidth(), rl.GetScreenHeight())
+	    Lose(rl.GetScreenWidth(), rl.GetScreenHeight(), wh, &res, &field, &snake)
 	} else {
 	    DrawField(rl.GetScreenWidth(), rl.GetScreenHeight(), 20, wh, field, snake)
 	    if count == 10 {
@@ -185,9 +201,9 @@ main :: proc() {
 	    case rl.IsKeyPressed(rl.KeyboardKey.RIGHT):
 		direction = Direction.Right
 	    }
+	    count += 1
 	}
 	
-	count += 1
         rl.EndDrawing()
     }
 
