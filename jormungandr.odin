@@ -29,58 +29,97 @@ FieldCell :: enum {
     Fruit,
 }
 
-Result :: enum {
+State :: enum {
     None = 0,
     WrongDirection,
     GameOver,
     Menu,
+    Settings,
 }
 
-Menu :: proc(w, h: i32, choice: ^int) -> Result {
-    text: cstring = "Jörmungandr"
-    position := w / 2 - i32(rl.MeasureText(text, 40)) / 2
-    rl.DrawText(text, position, h / 2 - 50, 40, SNAKE_TAIL)
+Menu :: proc(w, h, field_width, field_height: i32, choice: ^int, field: ^Field, snake: ^Snake) -> State {
+    title: cstring = "Jörmungandr"
+    position := w / 2 - i32(rl.MeasureText(title, 40)) / 2
+    rl.DrawText(title, position, h / 2 - 50, 40, SNAKE_TAIL)
     
-    f_color := SNAKE_TAIL
-    s_color := SNAKE_TAIL
-    switch choice^ {
-    case 0:
-	s_color = FRUIT
-    case 1:
-	f_color = FRUIT
-    }
-    text = "Play"
-    position = w / 2 - i32(rl.MeasureText(text, 30)) / 2
-    rl.DrawText(text, position, h / 2 + 20, 30, f_color)
-
-    text = "Exit"
-    position = w / 2 - i32(rl.MeasureText(text, 30)) / 2
-    rl.DrawText(text, position, h / 2 + 50, 30, s_color)
     
-    switch {
-    case rl.IsKeyPressed(rl.KeyboardKey.UP):
-	if choice^ < 2 {
-	    choice^ += 1
-	}
-    case rl.IsKeyPressed(rl.KeyboardKey.DOWN):
-	if choice^ >= 0 {
-	    choice^ -= 1
-	}
-    case rl.IsKeyPressed(rl.KeyboardKey.SPACE):
+    buttons := [?]cstring{"Play", "Settings", "Exit"}
+    DrawButtons(buttons[:], w, h, choice)
+    
+    if rl.IsKeyPressed(rl.KeyboardKey.SPACE) {
 	switch choice^ {
 	case 0:
+	    PrepareField(field_width, field_height, field, snake)
+	    return nil
+	case 1:
+	    choice^ = 0
+	    return State.Settings
+	case 2:
 	    rl.CloseWindow()
 	    os.exit(0)
-	case 1:
-	    return nil
 	}
     }
-    return Result.Menu
+    return State.Menu
 }
 
-MovePlayer :: proc(direction: Direction, snake: ^Snake, table: ^Field) -> Result {
+Settings :: proc(w, h: i32, field_width, field_height: ^i32, choice: ^int) -> State {
+    title: cstring = "Settings"
+    position := w / 2 - i32(rl.MeasureText(title, 40)) / 2
+    rl.DrawText(title, position, h / 2 - 50, 40, SNAKE_TAIL)
+    
+    wbutton: cstring = fmt.ctprintf("Field width: {}", field_width^) 
+    hbutton: cstring = fmt.ctprintf("Field height: {}", field_height^)
+    buttons := [?]cstring{wbutton, hbutton, "Back"}
+    DrawButtons(buttons[:], w, h, choice)
+    wh := [2]^i32{field_width, field_height}
+    if choice^ < 2 {
+	switch {
+	case rl.IsKeyPressed(rl.KeyboardKey.LEFT):
+	    if choice^ > 2 {
+		wh[choice^]^ -= 1
+	    }
+	case rl.IsKeyPressed(rl.KeyboardKey.RIGHT):
+	    wh[choice^]^ += 1
+	}
+    }
+    
+    if rl.IsKeyPressed(rl.KeyboardKey.SPACE) && choice^ == 2 {
+	return State.Menu
+    }
+     
+    return State.Settings
+}
+
+DrawButtons :: proc(buttons: []cstring, w, h: i32, choice: ^int) {
+    colors := make([]rl.Color, len(buttons))
+    defer delete(colors)
+    position: i32
+    for button in 0..<len(buttons) {
+	colors[button] = SNAKE_TAIL
+    }
+    colors[choice^] = FRUIT
+    for button, index in buttons {
+	position = w / 2 - i32(rl.MeasureText(button, 30)) / 2
+	rl.DrawText(button, position, h / 2 + 20 + 30 * i32(index), 30, colors[index])
+    }
+    switch {
+    case rl.IsKeyPressed(rl.KeyboardKey.UP):
+	if choice^ > 0 {
+	    choice^ -= 1
+	}
+    case rl.IsKeyPressed(rl.KeyboardKey.DOWN):
+	if choice^ < len(buttons) {
+	    choice^ += 1
+	}
+    }
+}
+
+MovePlayer :: proc(direction: Direction, snake: ^Snake, field: ^Field) -> State {
     next: ^FieldCell
     y, x: int
+    field_width := len(field^[0])
+    field_height := len(field^)
+    
     switch direction {
     case .Up:
 	x = snake[0][0]
@@ -97,38 +136,38 @@ MovePlayer :: proc(direction: Direction, snake: ^Snake, table: ^Field) -> Result
     }
 
     switch {
-    case x > len(table) - 1:
+    case x > int(field_width) - 1:
 	x = 0
-    case y > len(table) - 1:
+    case y > int(field_height) - 1:
 	y = 0
     case y < 0:
-	y = len(table) - 1
+	y = int(field_height) - 1
     case x < 0:
-	x = len(table) - 1
+	x = int(field_width) - 1
     }
     
-    next = &table[y][x]
+    next = &field[y][x]
     if len(snake) > 1 && x == snake[1][0] && y == snake[1][1] {
-	return Result.WrongDirection
+	return State.WrongDirection
     }
 
     #partial switch next^ {
-	case .None:
+    case .None:
 	last := pop(snake)
 	inject_at(snake, 0, [2]int{x, y})
-	table[last[1]][last[0]] = FieldCell.None
+	field[last[1]][last[0]] = FieldCell.None
 	next^ = FieldCell.Head
-	case .Head:
-	return Result.GameOver
-	case .Fruit:
+    case .Head:
+	return State.GameOver
+    case .Fruit:
 	inject_at(snake, 0, [2]int{x, y})
 	next^ = FieldCell.Head
-	PlaceFruit(table, snake)
+	PlaceFruit(field, snake)
     }
-    return Result.None
+    return State.None
 }
 
-Lose :: proc(w, h, wh: i32 res: ^Result, field: ^Field, snake: ^Snake) {
+Lose :: proc(w, h: i32, snake: Snake) -> State {
     rl.ClearBackground(BG)
     text: cstring = "YOU LOST"
     position := w / 2 - i32(rl.MeasureText(text, 30)) / 2
@@ -145,27 +184,22 @@ Lose :: proc(w, h, wh: i32 res: ^Result, field: ^Field, snake: ^Snake) {
     rl.DrawText(cscore, position, h / 2, 25, SNAKE_TAIL)
     
     if rl.IsKeyPressed(rl.KeyboardKey.SPACE) {
-	res^ = Result.Menu
-	field^ = make(Field, wh)
-	for &arr in field {
-	    arr = make([dynamic]FieldCell, wh)
-	}
-	field[wh/2][wh/2] = FieldCell.Head
-	snake^ = make(Snake, 0, wh * wh)
-	append(snake, [2]int{int(wh/2), int(wh/2)})
-	PlaceFruit(field, snake)
+	return State.Menu
     }
+    return State.GameOver
 }
 
 PlaceFruit :: proc(field: ^Field, snake: ^Snake) {
-    rx: i32
-    ry: i32
+    rx: int
+    ry: int
+    field_width := len(field^[0]) - 1
+    field_height := len(field^) - 1
     for {
-	rx = rand.int31_max(11)
-	ry = rand.int31_max(11)
+	rx = rand.int_max(field_width)
+	ry = rand.int_max(field_width)
 	if field[rx][ry] == FieldCell.Head {
-	    rx = rand.int31_max(11)
-	    ry = rand.int31_max(11)
+	    rx = rand.int_max(field_width)
+	    ry = rand.int_max(field_width)
 	    continue
 	}
 	field[rx][ry] = FieldCell.Fruit
@@ -173,24 +207,36 @@ PlaceFruit :: proc(field: ^Field, snake: ^Snake) {
     }
 }
 
-DrawField :: proc(w, h, rwidth, amount: i32, table: Field, snake: Snake) {
-    cube := (rwidth + 5) * (amount / 2)
+PrepareField :: proc(field_width, field_height: i32, field: ^Field, snake: ^Snake) {
+	field^ = make(Field, field_height)
+	for &arr in field {
+	    arr = make([dynamic]FieldCell, field_width)
+	}
+	field[field_height/2][field_width/2] = FieldCell.Head
+	snake^ = make(Snake, 0, field_width * field_height)
+	append(snake, [2]int{int(field_width/2), int(field_height/2)})
+	PlaceFruit(field, snake)
+}
+
+DrawField :: proc(w, h, rwidth, field_width, field_height: i32, field: Field, snake: Snake) {
+    cubex := (rwidth + 5) * (field_width / 2)
+    cubey := (rwidth + 5) * (field_height / 2)
     
-    startx := w / 2 - cube
-    starty := h / 2 - cube
-    endx := w / 2 + cube
-    endy := h / 2 + cube
+    startx := w / 2 - cubex
+    starty := h / 2 - cubey
+    endx := w / 2 + cubex
+    endy := h / 2 + cubey
     if startx < 0 || starty < 0 || endx > w || endy > h {
 	text: cstring = "Window is too small"
 	position := w / 2 - i32(rl.MeasureText(text, 13)) / 2
 	rl.DrawText(text, position, h / 2, 13, rl.GRAY)
     } else {
-	for i in 0..<amount {
-	    for j in 0..<amount {
+	for i in 0..<field_height {
+	    for j in 0..<field_width {
 		jx := startx + (rwidth + 5) * j
 		iy := starty +(rwidth + 5) * i
 		color: rl.Color;
-		switch table[i][j] {
+		switch field[i][j] {
 		case .Head:
 		    color = SNAKE_TAIL
 		case .Fruit:
@@ -212,35 +258,36 @@ main :: proc() {
     rl.InitWindow(800, 800, "Jörmungandr")
     rl.SetTargetFPS(60)
 
-    wh: i32 = 11
-    field := make(Field, wh)
-    for &arr in field {
-	arr = make([dynamic]FieldCell, wh)
-    }
-    field[wh/2][wh/2] = FieldCell.Head
-    snake := make(Snake, 0, wh * wh)
-    append(&snake, [2]int{int(wh/2), int(wh/2)})
-    PlaceFruit(&field, &snake)
+    field_width: i32 = 11
+    field_height: i32 = 11
+    speed := 10
+    field: Field
+    snake: Snake
+    PrepareField(field_width, field_height, &field, &snake)
     
     direction := Direction.Right
     last_direction: Direction;
     count := 0
-    res: Result = Result.Menu
-    choice := 1
+    res: State = State.Menu
+    choice := 0
     for !rl.WindowShouldClose() {
         rl.BeginDrawing()
         rl.ClearBackground(BG)
 
-	if res == Result.Menu {
-	    res = Menu(rl.GetScreenWidth(), rl.GetScreenHeight(), &choice)
-	} else if res == Result.GameOver {
-	    Lose(rl.GetScreenWidth(), rl.GetScreenHeight(), wh, &res, &field, &snake)
-	} else {
-	    DrawField(rl.GetScreenWidth(), rl.GetScreenHeight(), 20, wh, field, snake)
-	    if count == 10 {
+	#partial switch res {
+	case State.Menu:
+	    res = Menu(rl.GetScreenWidth(), rl.GetScreenHeight(), field_width, field_height, &choice, &field, &snake)
+	case State.GameOver: 
+	    res = Lose(rl.GetScreenWidth(), rl.GetScreenHeight(), snake)
+	case State.Settings:
+	    res = Settings(rl.GetScreenWidth(), rl.GetScreenHeight(), &field_width, &field_height, &choice)
+	case State.None: 
+	    DrawField(rl.GetScreenWidth(), rl.GetScreenHeight(), 20, field_width, field_height, field, snake)
+	    if count == speed {
 		res = MovePlayer(direction, &snake, &field)
-		if res == Result.WrongDirection {
+		if res == State.WrongDirection {
 		    direction = last_direction
+		    res = State.None
 		    continue
 		}
 		last_direction = direction
@@ -248,13 +295,13 @@ main :: proc() {
 	    }
 	    
 	    switch {
-	    case rl.IsKeyPressed(rl.KeyboardKey.UP):
+	    case rl.IsKeyDown(rl.KeyboardKey.UP):
 		direction = Direction.Up
-	    case rl.IsKeyPressed(rl.KeyboardKey.DOWN):
+	    case rl.IsKeyDown(rl.KeyboardKey.DOWN):
 		direction = Direction.Down
-	    case rl.IsKeyPressed(rl.KeyboardKey.LEFT):
+	    case rl.IsKeyDown(rl.KeyboardKey.LEFT):
 		direction = Direction.Left
-	    case rl.IsKeyPressed(rl.KeyboardKey.RIGHT):
+	    case rl.IsKeyDown(rl.KeyboardKey.RIGHT):
 		direction = Direction.Right
 	    }
 	    count += 1
